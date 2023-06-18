@@ -152,8 +152,8 @@ function send_message( array $message, $functions, $api_key, array $messages = [
 
     // somewhat handle errors
     if( ! isset( $response->choices[0]->message ) ) {
-        if( isset( $response->choices[0]->error ) ) {
-            $error = $response->choices[0]->error;
+        if( isset( $response->error ) ) {
+            $error = trim( $response->error->message . " (" . $response->error->type . ")" );
         } else {
             $error = $curl_exec;
         }
