@@ -2,6 +2,8 @@
 
 This is an example code for using the OpenAI GPT-4 API's function calling capability. There is a `chatbot.php` in the repostiory, which is a command line chatbot that you can use to interact with ChatGPT.
 
+There is also a work-in-progress ChatGPT PHP library in the `library/ChatGPT.php` file that can work with function calling.
+
 The chatbot has been programmed, using GPT-4 function calling, to answer to queries about the weather with "It's nice and sunny". It also has a shopping cart, into which you can add products and list the contents of.
 
 ## Usage
