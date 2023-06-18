@@ -54,11 +54,11 @@ $chatgpt->add_function( [
 
 $chatgpt->umessage( "What's the weather like in California?" );
 // It's nice and sunny in California
-echo $chatgpt->response()->content; 
+echo $chatgpt->response()->content . PHP_EOL;
 
 $chatgpt->umessage( "What's the weather like in Alaska?" );
 // It's cold and windy in Alaska
-echo $chatgpt->response()->content; 
+echo $chatgpt->response()->content . PHP_EOL;
 ```
 
 Saving chat history to and loading from a file:
@@ -88,6 +88,6 @@ foreach( $messages as $message ) {
 }
 
 $chatgpt->umessage( "What is " . ( ( $message_count / 2 ) + 1 ) . " * 5?" );
-// Prints 5, 10, 5, 20, 25, etc. on consecutive runs
+// Prints 5, 10, 15, 20, 25, etc. on consecutive runs
 echo $chatgpt->response()->content . PHP_EOL;
 ```
