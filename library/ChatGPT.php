@@ -27,6 +27,10 @@ class ChatGPT {
         ];
 
         $this->messages[] = $message;
+
+        if( is_callable( $this->savefunction ) ) {
+            $this->savefunction( $message, $this->chat_id );
+        }
     }
     
     public function umessage( string $user_message ) {
@@ -36,6 +40,10 @@ class ChatGPT {
         ];
 
         $this->messages[] = $message;
+
+        if( is_callable( $this->savefunction ) ) {
+            $this->savefunction( $message, $this->chat_id );
+        }
     }
     
     public function amessage( string $assistant_message ) {
@@ -45,6 +53,10 @@ class ChatGPT {
         ];
 
         $this->messages[] = $message;
+
+        if( is_callable( $this->savefunction ) ) {
+            $this->savefunction( $message, $this->chat_id );
+        }
     }
     
     public function fcall(
@@ -61,6 +73,10 @@ class ChatGPT {
         ];
 
         $this->messages[] = $message;
+
+        if( is_callable( $this->savefunction ) ) {
+            $this->savefunction( $message, $this->chat_id );
+        }
     }
     
     public function fresult(
@@ -74,6 +90,10 @@ class ChatGPT {
         ];
 
         $this->messages[] = $message;
+
+        if( is_callable( $this->savefunction ) ) {
+            $this->savefunction( $message, $this->chat_id );
+        }
     }
 
     public function response() {   
