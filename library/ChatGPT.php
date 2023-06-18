@@ -16,7 +16,7 @@ class ChatGPT {
 
     public function load() {
         if( is_callable( $this->loadfunction ) ) {
-            $this->messages = $this->loadfunction( $this->chat_id );
+            $this->messages = ($this->loadfunction)( $this->chat_id );
         }
     }
     
@@ -29,7 +29,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
     
@@ -42,7 +42,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
     
@@ -55,7 +55,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
     
@@ -75,7 +75,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
     
@@ -92,7 +92,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
 
@@ -140,7 +140,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            $this->savefunction( $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     
         $message = end( $this->messages );
