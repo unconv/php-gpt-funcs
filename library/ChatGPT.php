@@ -4,6 +4,7 @@ class ChatGPT {
     protected array $functions = [];
     protected $savefunction = null;
     protected $loadfunction = null;
+    protected bool $loaded = false;
 
     public function __construct(
         protected string $api_key,
@@ -17,6 +18,7 @@ class ChatGPT {
     public function load() {
         if( is_callable( $this->loadfunction ) ) {
             $this->messages = ($this->loadfunction)( $this->chat_id );
+            $this->loaded = true;
         }
     }
     
@@ -320,8 +322,11 @@ class ChatGPT {
         return $this->messages;
     }
 
-    public function loadfunction( callable $loadfunction ) {
+    public function loadfunction( callable $loadfunction, bool $autoload = true ) {
         $this->loadfunction = $loadfunction;
+        if( $autoload && ! $this->loaded ) {
+            $this->load();
+        }
     }
 
     public function savefunction( callable $savefunction ) {
