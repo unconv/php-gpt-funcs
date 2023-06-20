@@ -196,7 +196,11 @@ class ChatGPT {
                     "description" => $parameter['description'],
                 ];
 
-                if( isset( $parameter["required"] ) && $parameter["required"] !== false ) {
+                if( isset( $parameter["items"] ) ) {
+                    $properties[$parameter['name']]["items"] = $parameter["items"];
+                }
+
+                if( array_key_exists( "required", $parameter ) && $parameter["required"] !== false ) {
                     $required[] = $parameter["name"];
                 }
             }
@@ -215,8 +219,101 @@ class ChatGPT {
         return $functions;
     }
 
-    public function add_function( array $function_data ) {
-        $this->functions[] = $function_data;
+    public function add_function( array|callable $function ) {
+        if( is_callable( $function ) ) {
+            $function = $this->parse_function( $function );
+        }
+        $this->functions[] = $function;
+    }
+
+    protected function parse_function( callable $function ) {
+        $reflection = new ReflectionFunction( $function );
+        $doc_comment = $reflection->getDocComment() ?: "";
+        $description = $this->parse_description( $doc_comment );
+
+        $function_data = [
+            "function" => $function,
+            "name" => $reflection->getName(),
+            "description" => $description,
+            "parameters" => [],
+        ];
+
+        $matches = [];
+        preg_match_all( '/@param\s+(\S+)\s+\$(\S+)[^\S\r\n]?([^\r\n]+)?/', $doc_comment, $matches );
+
+        $types = $matches[1];
+        $names = $matches[2];
+        $descriptions = $matches[3];
+
+        $params = $reflection->getParameters();
+        foreach( $params as $param ) {
+            $name = $param->getName();
+            $index = array_search( $name, $names );
+            $description = $descriptions[$index] ?? "";
+            $type = $param->getType()?->getName() ?? $types[$index] ?? "string";
+
+            try {
+                $param->getDefaultValue();
+                $required = false;
+            } catch( \ReflectionException $e ) {
+                $required = true;
+            }
+
+            $data = [
+                "name" => $name,
+                "type" => $this->parse_type( $type ),
+                "description" => $description,
+                "required" => $required,
+            ];
+
+            if( strpos( $type, "array<" ) === 0 ) {
+                $array_type = trim( substr( $type, 5 ), "<>" );
+                $data["type"] = "array";
+                $data["items"] = [
+                    "type" => $this->parse_type( $array_type ),
+                ];
+            }
+
+            if( strpos( $type, "[]" ) !== false ) {
+                $array_type = substr( $type, 0, -2 );
+                $data["type"] = "array";
+                $data["items"] = [
+                    "type" => $this->parse_type( $array_type ),
+                ];
+            }
+
+            $function_data["parameters"][] = $data;
+        }
+
+        return $function_data;
+    }
+
+    protected function parse_type( string $type ) {
+        return match( $type ) {
+            "int" => "number",
+            "integer" => "number",
+            "string" => "string",
+            "float" => "number",
+            default => "string",
+        };
+    }
+
+    protected function parse_description( string $doc_comment ) {
+        $lines = explode( "\n", $doc_comment );
+        $description = "";
+
+        $started = false;
+        foreach( $lines as $line ) {
+            $matches = [];
+            if( preg_match( '/\s+?\*\s+?([^@](.*?))?$/', $line, $matches ) === 1 ) {
+                $description .= " ".$matches[1];
+                $started = true;
+            } elseif( $started ) {
+                break;
+            }
+        }
+
+        return trim( $description );
     }
 
     public function messages() {

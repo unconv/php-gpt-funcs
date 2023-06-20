@@ -4,9 +4,9 @@ This is a simple library I have created for interacting with the ChatGPT-4 API w
 
 **This is a work in progress**
 
-## Usage
+## Basic usage
 
-Basic usage: Send a message and get response back:
+Send a message and get response back:
 ```php
 $chatgpt = new ChatGPT( "YOUR_API_KEY" );
 $chatgpt->umessage( "Write a short story about a man named Mike" );
@@ -15,7 +15,9 @@ $chatgpt->umessage( "Write a short story about a man named Mike" );
 echo $chatgpt->response()->content;
 ```
 
-Set a system message:
+## System message
+
+You can set a system message to make ChatGPT behave in a specific manner.
 
 ```php
 $chatgpt = new ChatGPT( "YOUR_API_KEY" );
@@ -29,28 +31,25 @@ $chatgpt->umessage( "What is the distance from the earth to the moon?" );
 echo $chatgpt->response()->content;
 ```
 
-Function calling:
+## Function calling
+
+You can pass PHP functions to the ChatGPT class with the `add_function` method. The function and parameter descriptions will be extracted automatically from the DocBlock comment. Parameter types will be extracted automatically from the function with `ReflectionFunction`.
+
 ```php
+/**
+ * Gets the current weather information
+ * @param string $location The location for which to get the weather
+ */
+function get_current_weather( string $location ) {
+    if( $location === "California" ) {
+        return "It's nice and sunny";
+    } else {
+        return "It's cold and windy";
+    }
+}
+
 $chatgpt = new ChatGPT( "YOUR_API_KEY" );
-$chatgpt->add_function( [
-    "function" => function( $location ) {
-        if( $location === "California" ) {
-            return "It's nice and sunny";
-        } else {
-            return "It's cold and windy";
-        }
-    },
-    "name" => "get_current_weather",
-    "description" => "Gets the current weather information",
-    "parameters" => [
-        [
-            "name" => "location",
-            "type" => "string",
-            "description" => "The location for which to get the weather",
-            "required" => true,
-        ],
-    ],
-] );
+$chatgpt->add_function( "get_current_weather" );
 
 $chatgpt->umessage( "What's the weather like in California?" );
 // It's nice and sunny in California
