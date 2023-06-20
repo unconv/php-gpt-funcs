@@ -60,7 +60,10 @@ $chatgpt->umessage( "What's the weather like in Alaska?" );
 echo $chatgpt->response()->content . PHP_EOL;
 ```
 
-Saving chat history to and loading from a file:
+## Saving chat history
+
+You can save the chat history to a file and load it from a file using the `savefunction` and `loadfunction` methods. Pass in your own function that handles the loading / saving in your preferred way.
+
 ```php
 $chatgpt = new ChatGPT( "YOUR_API_KEY" );
 $chatgpt->savefunction( function( $message, $chat_id ) {
