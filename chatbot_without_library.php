@@ -172,9 +172,10 @@ function send_message( array $message, $functions, $api_key, array $messages = [
 ###############################################
 
 // ask for user message
-echo "ChatGPT: What would you like to know?\n";
+echo "ChatGPT: How can I assist you today?\n";
 echo "You: ";
 $prompt = fgets( fopen( "php://stdin", "r" ) );
+echo "\n";
 
 // send message to ChatGPT
 $messages = send_message( [
@@ -220,6 +221,7 @@ while( true ) {
         // and ask for a user message
         echo "You: ";
         $prompt = fgets( fopen( "php://stdin", "r" ) );
+        echo "\n";
         
         // send user message to ChatGPT
         $messages = send_message( [
