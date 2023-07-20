@@ -32,6 +32,11 @@ class ChatGPT {
         return $this->model;
     }
 
+    public function version() {
+        preg_match( "/gpt-(([0-9]+)\.?([0-9]+)?)/", $this->model, $matches );
+        return floatval( $matches[1] );
+    }
+
     public function force_function_call( string $function_name, ?array $arguments = null ) {
         if( $function_name === "auto" ) {
             if( ! is_null( $arguments ) ) {
