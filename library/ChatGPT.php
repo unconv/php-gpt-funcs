@@ -5,6 +5,7 @@ class ChatGPT {
     protected $savefunction = null;
     protected $loadfunction = null;
     protected bool $loaded = false;
+    protected $function_call = "auto";
     protected string $model = "gpt-3.5-turbo";
 
     public function __construct(
@@ -29,6 +30,20 @@ class ChatGPT {
 
     public function get_model() {
         return $this->model;
+    }
+
+    public function force_function_call( string $function_name, ?array $arguments = null ) {
+        if( $function_name === "auto" ) {
+            if( ! is_null( $arguments ) ) {
+                throw new \Exception( "Arguments must not be set when function_call is 'auto'" );
+            }
+            $this->function_call = "auto";
+        } else {
+            $this->function_call = [
+                "name" => $function_name,
+                "arguments" => $arguments,
+            ];
+        }
     }
 
     public function smessage( string $system_message ) {
@@ -117,7 +132,7 @@ class ChatGPT {
 
         if( ! empty( $functions ) ) {
             $fields["functions"] = $functions;
-            $fields["function_call"] = "auto";
+            $fields["function_call"] = $this->function_call;
         }
         
         // make ChatGPT API request
