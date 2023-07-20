@@ -90,7 +90,7 @@ print_r( $arguments->jokes );
 
 ## Saving chat history
 
-You can save the chat history to a file and load it from a file using the `savefunction` and `loadfunction` methods. Pass in your own function that handles the loading / saving in your preferred way.
+You can save the chat history to a file (or a database) and load it from a there using the `savefunction` and `loadfunction` methods. Pass in your own function that handles the loading / saving in your preferred way.
 
 ```php
 $chatgpt = new ChatGPT( "YOUR_API_KEY" );
