@@ -95,7 +95,7 @@ class ChatGPT {
         string $function_arguments
     ) {
         $message = [
-            "role" => "assisant",
+            "role" => "assistant",
             "content" => null,
             "function_call" => [
                 "name" => $function_name,
