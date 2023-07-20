@@ -1,8 +1,6 @@
-# PHP ChatGPT-4 Library with Function Calling
+# PHP ChatGPT Library with Function Calling
 
-This is a simple library I have created for interacting with the ChatGPT-4 API with function calling.
-
-**This is a work in progress**
+This is a simple library I have created for interacting with the ChatGPT API with function calling.
 
 ## Basic usage
 
@@ -35,6 +33,8 @@ echo $chatgpt->response()->content;
 
 You can pass PHP functions to the ChatGPT class with the `add_function` method. The function and parameter descriptions will be extracted automatically from the DocBlock comment. Parameter types will be extracted automatically from the function with `ReflectionFunction`.
 
+By default, the function result will be sent back to ChatGPT and ChatGPT will respond with a message based on the function result.
+
 ```php
 /**
  * Gets the current weather information
@@ -60,6 +60,34 @@ $chatgpt->umessage( "What's the weather like in Alaska?" );
 echo $chatgpt->response()->content . PHP_EOL;
 ```
 
+## Raw function calling
+
+Sometimes you only want to retrieve the JSON response of the function call and not actually call a local function and pass it to ChatGPT. You can set `raw_function_response` to `true` in the `response` method to get back only the raw response from ChatGPT.
+
+```php
+/**
+ * Give a list of jokes to the user
+ * @param array<string> $jokes The list of jokes
+ */
+function give_jokes( $jokes ) {
+    // No function body, will not actually be called
+}
+
+$chatgpt = new ChatGPT( "YOUR_API_KEY" );
+$chatgpt->add_function( "give_jokes" );
+
+$chatgpt->umessage( "Tell me 5 jokes" );
+
+$response = $chatgpt->response(
+    raw_function_response: true
+);
+
+$arguments = json_decode( $response->function_call->arguments );
+
+// Prints an array of jokes
+print_r( $arguments->jokes );
+```
+
 ## Saving chat history
 
 You can save the chat history to a file and load it from a file using the `savefunction` and `loadfunction` methods. Pass in your own function that handles the loading / saving in your preferred way.
@@ -79,7 +107,6 @@ $chatgpt->loadfunction( function( $chat_id ) {
         return json_decode( $message );
     }, $messages ?: [] );
 } );
-$chatgpt->load();
 
 $messages = $chatgpt->messages();
 $message_count = count( $messages );
