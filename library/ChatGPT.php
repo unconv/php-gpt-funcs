@@ -107,7 +107,7 @@ class ChatGPT {
         }
     }
 
-    public function response() {
+    public function response( bool $raw_function_response = false ) {
         $fields = [
             "model" => $this->model,
             "messages" => $this->messages,
@@ -156,13 +156,17 @@ class ChatGPT {
     
         $message = end( $this->messages );
 
-        $message = $this->handle_functions( $message );
+        $message = $this->handle_functions( $message, $raw_function_response );
 
         return $message;
     }
 
-    protected function handle_functions( stdClass $message ) {
+    protected function handle_functions( stdClass $message, bool $raw_function_response = false ) {
         if( isset( $message->function_call ) ) {
+            if( $raw_function_response ) {
+                return $message;
+            }
+
             // get function name and arguments
             $function_call = $message->function_call;
             $function_name = $function_call->name;
