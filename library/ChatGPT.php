@@ -123,7 +123,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( $message, $this->chat_id );
+            ($this->savefunction)( (object) $message, $this->chat_id );
         }
     }
 
