@@ -5,6 +5,7 @@ class ChatGPT {
     protected $savefunction = null;
     protected $loadfunction = null;
     protected bool $loaded = false;
+    protected string $model = "gpt-3.5-turbo";
 
     public function __construct(
         protected string $api_key,
@@ -21,7 +22,15 @@ class ChatGPT {
             $this->loaded = true;
         }
     }
-    
+
+    public function set_model( string $model ) {
+        $this->model = $model;
+    }
+
+    public function get_model() {
+        return $this->model;
+    }
+
     public function smessage( string $system_message ) {
         $message = [
             "role" => "system",
@@ -94,13 +103,13 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
 
-    public function response() {   
+    public function response() {
         $fields = [
-            "model" => "gpt-4-0613",
+            "model" => $this->model,
             "messages" => $this->messages,
         ];
 
