@@ -255,14 +255,27 @@ class ChatGPT {
     }
 
     public function add_function( array|callable $function ) {
-        if( is_callable( $function ) ) {
+        if( is_callable( $function, true ) ) {
             $function = $this->parse_function( $function );
+
+            if( ! is_callable( $function['function'] ) ) {
+                throw new \Exception( "Function must be callable (public)" );
+            }
         }
         $this->functions[] = $function;
     }
 
-    protected function parse_function( callable $function ) {
-        $reflection = new ReflectionFunction( $function );
+    protected function parse_function( array|callable $function ) {
+        if( is_array( $function ) ) {
+            if( ! is_callable( $function, true ) ) {
+                throw new \Exception( "Invalid class method provided" );
+            }
+
+            $reflection = new ReflectionMethod( ...$function );
+        } else {
+            $reflection = new ReflectionFunction( $function );
+        }
+
         $doc_comment = $reflection->getDocComment() ?: "";
         $description = $this->parse_description( $doc_comment );
 
