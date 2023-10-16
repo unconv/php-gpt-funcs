@@ -29,6 +29,18 @@ $chatgpt->umessage( "What is the distance from the earth to the moon?" );
 echo $chatgpt->response()->content;
 ```
 
+## Streaming
+
+You can easily stream the response from ChatGPT as plaintext or an event stream:
+
+```php
+$chatgpt = new ChatGPT( getenv("OPENAI_API_KEY") );
+$chatgpt->umessage( "Write a short poem" );
+$chatgpt->stream( StreamType::Plain );
+```
+
+See event stream example in [../examples/streaming_eventsource.php](../examples/streaming_eventsource.php)
+
 ## Function calling
 
 You can pass PHP functions to the ChatGPT class with the `add_function` method. The function and parameter descriptions will be extracted automatically from the DocBlock comment. Parameter types will be extracted automatically from the function with `ReflectionFunction`.
