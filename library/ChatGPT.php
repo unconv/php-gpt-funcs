@@ -1,4 +1,10 @@
 <?php
+enum StreamType: int {
+    case Event = 0; // for JavaScript EventSource
+    case Plain = 1; // for terminal application
+    case Raw   = 2; // for raw data from ChatGPT API
+}
+
 class ChatGPT {
     protected array $messages = [];
     protected array $functions = [];
@@ -127,7 +133,10 @@ class ChatGPT {
         }
     }
 
-    public function response( bool $raw_function_response = false ) {
+    public function response(
+        bool $raw_function_response = false,
+        ?StreamType $stream_type = null,
+    ) {
         $fields = [
             "model" => $this->model,
             "messages" => $this->messages,
@@ -146,28 +155,59 @@ class ChatGPT {
             "Content-Type: application/json",
             "Authorization: Bearer " . $this->api_key
         ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+        if( $stream_type ) {
+            $fields["stream"] = true;
+
+            $response_text = "";
+
+            curl_setopt( $ch, CURLOPT_WRITEFUNCTION, function( $ch, $data ) use ( &$response_text, $stream_type ) {
+                $response_text .= $this->parse_stream_data( $ch, $data, $stream_type );
+
+                if( connection_aborted() ) {
+                    return 0;
+                }
+
+                return strlen( $data );
+            } );
+        }
+
         curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode(
             $fields
         ) );
-        curl_setopt( $ch, CURLOPT_POST, true );
-        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
-    
-        // get ChatGPT reponse
+
         $curl_exec = curl_exec( $ch );
-        $response = json_decode( $curl_exec );
-    
-        // somewhat handle errors
-        if( ! isset( $response->choices[0]->message ) ) {
-            if( isset( $response->error ) ) {
-                $error = trim( $response->error->message . " (" . $response->error->type . ")" );
-            } else {
-                $error = $curl_exec;
+
+        // get ChatGPT reponse
+        if( $stream_type ) {
+            if( $stream_type === StreamType::Event ) {
+                echo "event: stop\n";
+                echo "data: stopped\n\n";
             }
-            throw new \Exception( "Error in OpenAI request: " . $error );
+
+            $message = new stdClass;
+            $message->role = "assistant";
+            $message->content = $response_text;
+        } else {
+            $response = json_decode( $curl_exec );
+
+            // somewhat handle errors
+            if( ! isset( $response->choices[0]->message ) ) {
+                if( isset( $response->error ) ) {
+                    $error = trim( $response->error->message . " (" . $response->error->type . ")" );
+                } else {
+                    $error = $curl_exec;
+                }
+                throw new \Exception( "Error in OpenAI request: " . $error );
+            }
+
+            // add response to messages
+            $message = $response->choices[0]->message;
         }
-    
-        // add response to messages
-        $message = $response->choices[0]->message;
+
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
@@ -179,6 +219,69 @@ class ChatGPT {
         $message = $this->handle_functions( $message, $raw_function_response );
 
         return $message;
+    }
+
+    public function stream( StreamType $stream_type ) {
+        while( ob_get_level() ) ob_end_flush();
+        return $this->response( stream_type: $stream_type );
+    }
+
+    protected function parse_stream_data( CurlHandle $ch, string $data, StreamType $stream_type ): string {
+        $json = json_decode( $data );
+
+        if( isset( $json->error ) ) {
+            $error  = $json->error->message;
+            $error .= " (" . $json->error->code . ")";
+            $error  = "`" . trim( $error ) . "`";
+
+            if( $stream_type == StreamType::Event ) {
+                echo "data: " . json_encode( ["content" => $error] ) . "\n\n";
+
+                echo "event: stop\n";
+                echo "data: stopped\n\n";
+            } elseif( $stream_type == StreamType::Plain ) {
+                echo $error;
+            } else {
+                echo $data;
+            }
+
+            flush();
+            die();
+        }
+
+        $response_text = "";
+
+        $deltas = explode( "\n", $data );
+
+        foreach( $deltas as $delta ) {
+            if( strpos( $delta, "data: " ) !== 0 ) {
+                continue;
+            }
+
+            $json = json_decode( substr( $delta, 6 ) );
+
+            if( isset( $json->choices[0]->delta ) ) {
+                $content = $json->choices[0]->delta->content ?? "";
+            } elseif( trim( $delta ) == "data: [DONE]" ) {
+                $content = "";
+            } else {
+                error_log( "Invalid ChatGPT response: '" . $delta . "'" );
+            }
+
+            $response_text .= $content;
+
+            if( $stream_type == StreamType::Event ) {
+                echo "data: " . json_encode( ["content" => $content] ) . "\n\n";
+            } elseif( $stream_type == StreamType::Plain ) {
+                echo $content;
+            } else {
+                echo $data;
+            }
+
+            flush();
+        }
+
+        return $response_text;
     }
 
     protected function handle_functions( stdClass $message, bool $raw_function_response = false ) {
