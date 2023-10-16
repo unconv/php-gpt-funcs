@@ -191,7 +191,13 @@ class ChatGPT {
             $function_call = $message->function_call;
             $function_name = $function_call->name;
             $arguments = json_decode( $function_call->arguments, true );
-        
+
+            // sometimes ChatGPT responds with only a string of the
+            // first argument instead of a JSON object
+            if( $arguments === null ) {
+                $arguments = [$function_call->arguments];
+            }
+
             $callable = $this->get_function( $function_name );
 
             if( is_callable( $callable ) ) {
