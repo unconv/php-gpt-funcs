@@ -63,7 +63,7 @@ class ChatGPT {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
     }
-    
+
     public function umessage( string $user_message ) {
         $message = [
             "role" => "user",
@@ -76,7 +76,7 @@ class ChatGPT {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
     }
-    
+
     public function amessage( string $assistant_message ) {
         $message = [
             "role" => "assistant",
@@ -89,7 +89,7 @@ class ChatGPT {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
     }
-    
+
     public function fcall(
         string $function_name,
         string $function_arguments
@@ -109,7 +109,7 @@ class ChatGPT {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
     }
-    
+
     public function fresult(
         string $function_name,
         string $function_return_value
@@ -139,7 +139,7 @@ class ChatGPT {
             $fields["functions"] = $functions;
             $fields["function_call"] = $this->function_call;
         }
-        
+
         // make ChatGPT API request
         $ch = curl_init( "https://api.openai.com/v1/chat/completions" );
         curl_setopt( $ch, CURLOPT_HTTPHEADER, [
@@ -173,7 +173,7 @@ class ChatGPT {
         if( is_callable( $this->savefunction ) ) {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
-    
+
         $message = end( $this->messages );
 
         $message = $this->handle_functions( $message, $raw_function_response );
@@ -205,7 +205,7 @@ class ChatGPT {
             } else {
                 $result = "Function '$function_name' unavailable.";
             }
-        
+
             $this->fresult( $function_name, $result );
 
             return $this->response();
