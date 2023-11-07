@@ -132,3 +132,25 @@ $chatgpt->umessage( "What is " . ( ( $message_count / 2 ) + 1 ) . " * 5?" );
 // Prints 5, 10, 15, 20, 25, etc. on consecutive runs
 echo $chatgpt->response()->content . PHP_EOL;
 ```
+
+## Custom parameters
+
+You can use the `set_param` or `set_params` methods on the `ChatGPT` class to set your custom parameters, like `temperature` and `max_tokens`:
+
+```php
+$chatgpt = new ChatGPT( "YOUR_API_KEY" );
+$chatgpt->set_params( [
+    "temperature" => 0.9,
+    "max_tokens" => 256,
+] );
+```
+
+OR
+
+```php
+$chatgpt = new ChatGPT( "YOUR_API_KEY" );
+$chatgpt->set_param( "temperature", 0.9 );
+$chatgpt->set_param( "max_tokens", 256 );
+```
+
+You can use any parameters that the ChatGPT API accepts.
