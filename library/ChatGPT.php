@@ -11,9 +11,13 @@ class ChatGPT {
     protected $savefunction = null;
     protected $loadfunction = null;
     protected bool $loaded = false;
-    protected $function_call = "auto";
+    protected $tool_choice = "auto";
     protected string $model = "gpt-3.5-turbo";
     protected array $params = [];
+    protected bool $assistant_mode = false;
+    protected ?Assistant $assistant = null;
+    protected ?string $thread_id = null;
+    protected ?Run $run = null;
 
     public function __construct(
         protected string $api_key,
@@ -28,6 +32,26 @@ class ChatGPT {
         if( is_callable( $this->loadfunction ) ) {
             $this->messages = ($this->loadfunction)( $this->chat_id );
             $this->loaded = true;
+        }
+    }
+
+    public function assistant_mode( bool $enabled ) {
+        $this->assistant_mode = $enabled;
+    }
+
+    public function set_assistant( Assistant|string $assistant ) {
+        if( is_string( $assistant ) ) {
+            $this->assistant = $this->fetch_assistant( $assistant );
+        } else {
+            $this->assistant = $assistant;
+        }
+    }
+
+    public function set_thread( Thread|string $thread ) {
+        if( is_string( $thread ) ) {
+            $this->thread_id = $thread;
+        } else {
+            $this->thread_id = $thread->get_id();
         }
     }
 
@@ -56,18 +80,8 @@ class ChatGPT {
         return floatval( $matches[1] );
     }
 
-    public function force_function_call( string $function_name, ?array $arguments = null ) {
-        if( $function_name === "auto" ) {
-            if( ! is_null( $arguments ) ) {
-                throw new \Exception( "Arguments must not be set when function_call is 'auto'" );
-            }
-            $this->function_call = "auto";
-        } else {
-            $this->function_call = [
-                "name" => $function_name,
-                "arguments" => $arguments,
-            ];
-        }
+    public function force_tool_choice( array|string $tool_choice ) {
+        $this->tool_choice = $tool_choice;
     }
 
     public function smessage( string $system_message ) {
@@ -91,6 +105,10 @@ class ChatGPT {
 
         $this->messages[] = $message;
 
+        if( $this->assistant_mode ) {
+            $this->add_assistants_message( $message );
+        }
+
         if( is_callable( $this->savefunction ) ) {
             ($this->savefunction)( (object) $message, $this->chat_id );
         }
@@ -109,17 +127,14 @@ class ChatGPT {
         }
     }
 
-    public function fcall(
-        string $function_name,
-        string $function_arguments
+    public function fresult(
+        string $tool_call_id,
+        string $function_return_value
     ) {
         $message = [
-            "role" => "assistant",
-            "content" => null,
-            "function_call" => [
-                "name" => $function_name,
-                "arguments" => $function_arguments,
-            ]
+            "role" => "tool",
+            "content" => $function_return_value,
+            "tool_call_id" => $tool_call_id,
         ];
 
         $this->messages[] = $message;
@@ -129,27 +144,69 @@ class ChatGPT {
         }
     }
 
-    public function fresult(
-        string $function_name,
-        string $function_return_value
+    public function assistant_response(
+        bool $raw_function_response = false,
+        ?StreamType $stream_type = null,
     ) {
-        $message = [
-            "role" => "function",
-            "content" => $function_return_value,
-            "name" => $function_name,
-        ];
-
-        $this->messages[] = $message;
-
-        if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+        if( $this->run?->get_status() !== "requires_action" ) {
+            $this->run = $this->create_run(
+                thread_id: $this->thread_id,
+                assistant_id: $this->assistant->get_id(),
+            );
         }
+
+        while( true ) {
+            usleep( 1000*100 );
+
+            $this->run = $this->fetch_run(
+                thread_id: $this->thread_id,
+                run_id: $this->run->get_id()
+            );
+
+            if( ! $this->run->is_pending() ) {
+                break;
+            }
+        }
+
+        if( $this->run->get_status() === "requires_action" ) {
+            $required_action = $this->run->get_required_action();
+
+            if( $required_action->type !== "submit_tool_outputs" ) {
+                throw new \Exception( "Unrecognized required action type '".$required_action->type."'" );
+            }
+
+            $message = new stdClass;
+            $message->role = "assistant";
+            $message->content = null;
+            $message->tool_calls = $required_action->submit_tool_outputs->tool_calls;
+        } else {
+            $messages = $this->get_thread_messages(
+                thread_id: $this->thread_id,
+                limit: 1,
+                order: "desc",
+            );
+
+            $message = new stdClass;
+            $message->role = $messages[0]->role;
+            $message->content = $messages[0]->content[0]->text->value;
+        }
+
+        $message = $this->handle_functions( $message, $raw_function_response );
+
+        return $message;
     }
 
     public function response(
         bool $raw_function_response = false,
         ?StreamType $stream_type = null,
     ) {
+        if( $this->assistant_mode ) {
+            return $this->assistant_response(
+                $raw_function_response,
+                $stream_type, // TODO: streaming is not supported yet
+            );
+        }
+
         $params = [
             "model" => $this->model,
             "messages" => $this->messages,
@@ -160,8 +217,8 @@ class ChatGPT {
         $functions = $this->get_functions();
 
         if( ! empty( $functions ) ) {
-            $params["functions"] = $functions;
-            $params["function_call"] = $this->function_call;
+            $params["tools"] = $functions;
+            $params["tool_choice"] = $this->tool_choice;
         }
 
         // make ChatGPT API request
@@ -300,31 +357,55 @@ class ChatGPT {
     }
 
     protected function handle_functions( stdClass $message, bool $raw_function_response = false ) {
-        if( isset( $message->function_call ) ) {
+        if( isset( $message->tool_calls ) ) {
+            $function_calls = array_filter(
+                $message->tool_calls,
+                fn( $tool_call ) => $tool_call->type === "function"
+            );
+
             if( $raw_function_response ) {
+                // for backwards compatibility
+                if( count( $function_calls ) === 1 ) {
+                    $message->function_call = $function_calls[0]->function;
+                }
+
                 return $message;
             }
 
-            // get function name and arguments
-            $function_call = $message->function_call;
-            $function_name = $function_call->name;
-            $arguments = json_decode( $function_call->arguments, true );
+            $tool_outputs = [];
 
-            // sometimes ChatGPT responds with only a string of the
-            // first argument instead of a JSON object
-            if( $arguments === null ) {
-                $arguments = [$function_call->arguments];
+            foreach( $function_calls as $tool_call ) {
+                // get function name and arguments
+                $function_call = $tool_call->function;
+                $function_name = $function_call->name;
+                $arguments = json_decode( $function_call->arguments, true );
+
+                // sometimes ChatGPT responds with only a string of the
+                // first argument instead of a JSON object
+                if( $arguments === null ) {
+                    $arguments = [$function_call->arguments];
+                }
+
+                $callable = $this->get_function( $function_name );
+
+                if( is_callable( $callable ) ) {
+                    $result = $callable( ...array_values( $arguments ) );
+                } else {
+                    $result = "Function '$function_name' unavailable.";
+                }
+
+                $tool_outputs[$tool_call->id] = $result;
+
+                $this->fresult( $tool_call->id, $result );
             }
 
-            $callable = $this->get_function( $function_name );
-
-            if( is_callable( $callable ) ) {
-                $result = $callable( ...array_values( $arguments ) );
-            } else {
-                $result = "Function '$function_name' unavailable.";
+            if( $this->assistant_mode ) {
+                $this->submit_tool_outputs(
+                    $this->thread_id,
+                    $this->run->get_id(),
+                    $tool_outputs,
+                );
             }
-
-            $this->fresult( $function_name, $result );
 
             return $this->response();
         }
@@ -332,20 +413,30 @@ class ChatGPT {
         return $message;
     }
 
-    protected function get_function( string $function_name ) {
-        foreach( $this->functions as $function ) {
+    protected function get_function( string $function_name ): callable|false {
+        if( $this->assistant_mode ) {
+            $functions = $this->assistant->get_functions();
+        } else {
+            $functions = $this->functions;
+        }
+
+        foreach( $functions as $function ) {
             if( $function["name"] === $function_name ) {
-                return $function["function"];
+                return $function["function"] ?? $function["name"];
             }
         }
 
         return false;
     }
 
-    protected function get_functions() {
-        $functions = [];
+    protected function get_functions( ?array $function_list = null ) {
+        $tools = [];
 
-        foreach( $this->functions as $function ) {
+        if( $function_list === null ) {
+            $function_list = $this->functions;
+        }
+
+        foreach( $function_list as $function ) {
             $properties = [];
             $required = [];
 
@@ -364,18 +455,21 @@ class ChatGPT {
                 }
             }
 
-            $functions[] = [
-                "name" => $function["name"],
-                "description" => $function["description"],
-                "parameters" => [
-                    "type" => "object",
-                    "properties" => $properties,
-                    "required" => $required,
+            $tools[] = [
+                "type" => "function",
+                "function" => [
+                    "name" => $function["name"],
+                    "description" => $function["description"],
+                    "parameters" => [
+                        "type" => "object",
+                        "properties" => $properties,
+                        "required" => $required,
+                    ],
                 ],
             ];
         }
 
-        return $functions;
+        return $tools;
     }
 
     public function add_function( array|callable $function ) {
@@ -501,5 +595,313 @@ class ChatGPT {
 
     public function savefunction( callable $savefunction ) {
         $this->savefunction = $savefunction;
+    }
+
+    public function create_assistant(
+        string $model,
+        string $name = "",
+        string $instructions = "",
+        array $functions = [],
+    ): Assistant {
+        $ch = curl_init( "https://api.openai.com/v1/assistants" );
+
+        foreach( $functions as $i => $function ) {
+            $functions[$i] = $this->parse_function( $function );
+        }
+
+        $tools = $this->get_functions( $functions );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( [
+            "model" => $model,
+            "name" => $name,
+            "instructions" => $instructions,
+            "tools" => $tools,
+        ], JSON_PRETTY_PRINT ) );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response, true );
+
+        if( ! isset( $data["id"] ) ) {
+            if( isset( $data["error"] ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data["error"]["message"] );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        return new Assistant(
+            name: $data["name"],
+            model: $data["model"],
+            tools: $data["tools"],
+            id: $data["id"],
+        );
+    }
+
+    public function create_thread(): Thread {
+        $ch = curl_init( "https://api.openai.com/v1/threads" );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->id ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        return new Thread(
+            id: $data->id,
+        );
+    }
+
+    public function create_run(
+        string $thread_id,
+        string $assistant_id,
+    ): Run {
+        $ch = curl_init( "https://api.openai.com/v1/threads/".$thread_id."/runs" );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( [
+            "assistant_id" => $assistant_id,
+        ] ) );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->id ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        return new Run(
+            thread_id: $thread_id,
+            required_action: $data->required_action ?? null,
+            status: $data->status,
+            id: $data->id,
+        );
+    }
+
+    public function fetch_run(
+        string $thread_id,
+        string $run_id,
+    ): Run {
+        $ch = curl_init( "https://api.openai.com/v1/threads/" . $thread_id . "/runs/" . $run_id );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, false );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->id ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        return new Run(
+            thread_id: $thread_id,
+            required_action: $data->required_action ?? null,
+            status: $data->status,
+            id: $data->id,
+        );
+    }
+
+    public function fetch_assistant( string $assistant_id ): Assistant {
+        $ch = curl_init( "https://api.openai.com/v1/assistants/" . $assistant_id );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, false );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response, true );
+
+        if( ! isset( $data["id"] ) ) {
+            if( isset( $data["error"] ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data["error"]["message"] );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        return new Assistant(
+            model: $data["model"],
+            id: $data["id"],
+            tools: $data["tools"],
+            name: $data["name"],
+        );
+    }
+
+    public function get_thread_messages(
+        string $thread_id,
+        int $limit,
+        string $order = "asc",
+    ): array {
+        $ch = curl_init( "https://api.openai.com/v1/threads/" . $thread_id . "/messages?limit=" . $limit . "&order=" . $order );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, false );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->data ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+
+        $messages = [];
+
+        foreach( $data->data as $message ) {
+            $messages[] = $message;
+        }
+
+        return $messages;
+    }
+
+    public function add_assistants_message(
+        array $message,
+    ): void {
+        $ch = curl_init( "https://api.openai.com/v1/threads/" . $this->thread_id . "/messages" );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( [
+            "role" => $message["role"],
+            "content" => $message["content"],
+        ] ) );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->id ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
+    }
+
+    public function submit_tool_outputs(
+        string $thread_id,
+        string $run_id,
+        array $tool_call_outputs,
+    ): void {
+        $tool_outputs = [];
+
+        foreach( $tool_call_outputs as $tool_call_id => $tool_call_output ) {
+            $tool_outputs[] = [
+                "tool_call_id" => $tool_call_id,
+                "output" => $tool_call_output,
+            ];
+        }
+
+        $ch = curl_init( "https://api.openai.com/v1/threads/".$thread_id."/runs/".$run_id."/submit_tool_outputs" );
+
+        curl_setopt( $ch, CURLOPT_HTTPHEADER, [
+            "Content-Type: application/json",
+            "Authorization: Bearer " . $this->api_key,
+            "OpenAI-Beta: assistants=v1"
+        ] );
+
+        curl_setopt( $ch, CURLOPT_POST, true );
+        curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+        curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode( [
+            "tool_outputs" => $tool_outputs
+        ] ) );
+
+        $response = curl_exec( $ch );
+
+        curl_close( $ch );
+
+        $data = json_decode( $response );
+
+        if( ! isset( $data->id ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
+            }
+
+            throw new \Exception( "Error in OpenAI request: " . $response );
+        }
     }
 }
