@@ -100,6 +100,29 @@ $arguments = json_decode( $response->function_call->arguments );
 print_r( $arguments->jokes );
 ```
 
+## Assistants API
+
+Since 2023-11-17, the library has basic support for the new Assistants API. You can use it as follows:
+
+```php
+$chatgpt = new ChatGPT( "YOUR_API_KEY" );
+$chatgpt->assistant_mode( true );
+
+// create and use assistant
+$assistant = $chatgpt->create_assistant(
+    model: "gpt-3.5-turbo"
+);
+$chatgpt->set_assistant( $assistant );
+
+// create and use a thread
+$thread = $chatgpt->create_thread();
+$chatgpt->set_thread( $thread );
+
+/* ... use the library as normal ... */
+```
+
+Once you have created an assistant and a thread, you can get their IDs with `$assistant->get_id()` and `$thread->get_id()` and pass the IDs into `$chatgpt->set_assistant()` and `$chatgpt->set_thread()` to load use a previously created assistant and thread.
+
 ## Saving chat history
 
 You can save the chat history to a file (or a database) and load it from a there using the `savefunction` and `loadfunction` methods. Pass in your own function that handles the loading / saving in your preferred way.

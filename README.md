@@ -1,3 +1,5 @@
+**2023-11-17: Added support for Assistants API to the library!**
+
 # PHP GPT-4 Function Calling Example
 
 This is an example code for using the OpenAI API's function calling capability. There is a chatbot demo in the repostiory, which is a command line chatbot that you can use to interact with ChatGPT.
