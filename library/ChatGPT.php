@@ -360,7 +360,7 @@ class ChatGPT {
         if( isset( $message->tool_calls ) ) {
             $function_calls = array_filter(
                 $message->tool_calls,
-                fn( $tool_call ) => $tool_call["type"] === "function"
+                fn( $tool_call ) => $tool_call->type === "function"
             );
 
             if( $raw_function_response ) {
