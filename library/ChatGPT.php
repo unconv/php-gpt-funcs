@@ -189,7 +189,7 @@ class ChatGPT {
             $message->content = $messages[0]->content[0]->text->value;
         }
 
-        $message = $this->handle_functions( $message, $raw_function_response );
+        $message = $this->handle_functions( $message, $raw_function_response, stream_type: $stream_type );
 
         return $message;
     }
@@ -233,9 +233,11 @@ class ChatGPT {
             $params["stream"] = true;
 
             $response_text = "";
+            $partial_data = "";
+            $functions = [];
 
-            curl_setopt( $ch, CURLOPT_WRITEFUNCTION, function( $ch, $data ) use ( &$response_text, $stream_type ) {
-                $response_text .= $this->parse_stream_data( $ch, $data, $stream_type );
+            curl_setopt( $ch, CURLOPT_WRITEFUNCTION, function( $ch, $data ) use ( &$response_text, &$partial_data, &$functions, $stream_type ) {
+                $response_text .= $this->parse_stream_data( $ch, $data, $stream_type, $partial_data, $functions );
 
                 if( connection_aborted() ) {
                     return 0;
@@ -253,14 +255,18 @@ class ChatGPT {
 
         // get ChatGPT reponse
         if( $stream_type ) {
-            if( $stream_type === StreamType::Event ) {
-                echo "event: stop\n";
-                echo "data: stopped\n\n";
-            }
-
             $message = new stdClass;
             $message->role = "assistant";
             $message->content = $response_text;
+
+            if( count( $functions ) ) {
+                $message->tool_calls = $functions;
+            } else {
+                if( $stream_type === StreamType::Event ) {
+                    echo "event: stop\n";
+                    echo "data: stopped\n\n";
+                }
+            }
         } else {
             $response = json_decode( $curl_exec );
 
@@ -286,7 +292,7 @@ class ChatGPT {
 
         $message = end( $this->messages );
 
-        $message = $this->handle_functions( $message, $raw_function_response );
+        $message = $this->handle_functions( $message, $raw_function_response, stream_type: $stream_type );
 
         return $message;
     }
@@ -296,7 +302,7 @@ class ChatGPT {
         return $this->response( stream_type: $stream_type );
     }
 
-    protected function parse_stream_data( CurlHandle $ch, string $data, StreamType $stream_type ): string {
+    protected function parse_stream_data( CurlHandle $ch, string $data, StreamType $stream_type, string &$partial_data, array &$functions ): string {
         $json = json_decode( $data );
 
         if( isset( $json->error ) ) {
@@ -321,21 +327,69 @@ class ChatGPT {
 
         $response_text = "";
 
-        $deltas = explode( "\n", $data );
+        $deltas = explode( "\n\n", $data );
 
         foreach( $deltas as $delta ) {
-            if( strpos( $delta, "data: " ) !== 0 ) {
+            $partial_data .= $delta;
+
+            try {
+                $json = json_decode( substr( $delta, 6 ), flags: JSON_THROW_ON_ERROR );
+            } catch( JsonException $e ) {
                 continue;
             }
 
-            $json = json_decode( substr( $delta, 6 ) );
+            $content = "";
 
-            if( isset( $json->choices[0]->delta ) ) {
-                $content = $json->choices[0]->delta->content ?? "";
-            } elseif( trim( $delta ) == "data: [DONE]" ) {
-                $content = "";
-            } else {
+            if( ! isset( $json->choices[0]->delta ) ) {
                 error_log( "Invalid ChatGPT response: '" . $delta . "'" );
+                continue;
+            }
+
+            if( isset( $json->choices[0]->delta->content ) ) {
+                $content = $json->choices[0]->delta->content;
+            } elseif( isset( $json->choices[0]->delta->tool_calls ) ) {
+                foreach( $json->choices[0]->delta->tool_calls as $tool_call ) {
+                    if( ! isset( $functions[$tool_call->index] ) ) {
+                        $functions[$tool_call->index] = new stdClass;
+                        $functions[$tool_call->index]->index = $tool_call->index;
+                    }
+
+                    if( isset( $tool_call->id ) ) {
+                        if( ! isset( $functions[$tool_call->index]->id ) ) {
+                            $functions[$tool_call->index]->id = "";
+                        }
+
+                        $functions[$tool_call->index]->id .= $tool_call->id;
+                    }
+
+                    if( isset( $tool_call->type ) ) {
+                        if( ! isset( $functions[$tool_call->index]->type ) ) {
+                            $functions[$tool_call->index]->type = "";
+                        }
+
+                        $functions[$tool_call->index]->type .= $tool_call->type;
+                    }
+
+                    if( ! isset( $functions[$tool_call->index]->function ) ) {
+                        $functions[$tool_call->index]->function = new stdClass;
+                    }
+
+                    if( isset( $tool_call->function->name ) ) {
+                        if( ! isset( $functions[$tool_call->index]->function->name ) ) {
+                            $functions[$tool_call->index]->function->name = "";
+                        }
+
+                        $functions[$tool_call->index]->function->name .= $tool_call->function->name;
+                    }
+
+                    if( isset( $tool_call->function->arguments ) ) {
+                        if( ! isset( $functions[$tool_call->index]->function->arguments ) ) {
+                            $functions[$tool_call->index]->function->arguments = "";
+                        }
+
+                        $functions[$tool_call->index]->function->arguments .= $tool_call->function->arguments;
+                    }
+                }
             }
 
             $response_text .= $content;
@@ -354,7 +408,7 @@ class ChatGPT {
         return $response_text;
     }
 
-    protected function handle_functions( stdClass $message, bool $raw_function_response = false ) {
+    protected function handle_functions( stdClass $message, bool $raw_function_response = false, ?StreamType $stream_type = null ) {
         if( isset( $message->tool_calls ) ) {
             $function_calls = array_filter(
                 $message->tool_calls,
@@ -405,7 +459,7 @@ class ChatGPT {
                 );
             }
 
-            return $this->response();
+            return $this->response( stream_type: $stream_type );
         }
 
         return $message;
