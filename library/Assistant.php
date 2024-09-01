@@ -14,9 +14,9 @@ class Assistant
 
     public function get_functions() {
         $functions = array_filter( $this->tools, function( $tool ) {
-            return $tool["type"] === "function";
+            return $tool->type === "function";
         } );
 
-        return array_map( fn( $tool ) => $tool["function"], $functions );
+        return array_map( fn( $tool ) => json_decode( json_encode( $tool->function ), true ), $functions );
     }
 }

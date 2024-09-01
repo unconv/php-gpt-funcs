@@ -6,6 +6,7 @@ enum StreamType: int {
 }
 
 class ChatGPT {
+    /** @var array<stdClass> $messages */
     protected array $messages = [];
     protected array $functions = [];
     protected $savefunction = null;
@@ -98,10 +99,9 @@ class ChatGPT {
     }
 
     public function umessage( string $user_message ) {
-        $message = [
-            "role" => "user",
-            "content" => $user_message,
-        ];
+        $message = new stdClass;
+        $message->role = "user";
+        $message->content = $user_message;
 
         $this->messages[] = $message;
 
@@ -110,20 +110,19 @@ class ChatGPT {
         }
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
 
     public function amessage( string $assistant_message ) {
-        $message = [
-            "role" => "assistant",
-            "content" => $assistant_message,
-        ];
+        $message = new stdClass;
+        $message->role = "assistant";
+        $message->content = $assistant_message;
 
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
 
@@ -131,16 +130,15 @@ class ChatGPT {
         string $tool_call_id,
         string $function_return_value
     ) {
-        $message = [
-            "role" => "tool",
-            "content" => $function_return_value,
-            "tool_call_id" => $tool_call_id,
-        ];
+        $message = new stdClass;
+        $message->role = "tool";
+        $message->content = $function_return_value;
+        $message->tool_call_id = $tool_call_id;
 
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
     }
 
@@ -171,14 +169,14 @@ class ChatGPT {
         if( $this->run->get_status() === "requires_action" ) {
             $required_action = $this->run->get_required_action();
 
-            if( $required_action["type"] !== "submit_tool_outputs" ) {
-                throw new \Exception( "Unrecognized required action type '".$required_action["type"]."'" );
+            if( $required_action->type !== "submit_tool_outputs" ) {
+                throw new \Exception( "Unrecognized required action type '".$required_action->type."'" );
             }
 
             $message = new stdClass;
             $message->role = "assistant";
             $message->content = null;
-            $message->tool_calls = $required_action["submit_tool_outputs"]["tool_calls"];
+            $message->tool_calls = $required_action->submit_tool_outputs->tool_calls;
         } else {
             $messages = $this->get_thread_messages(
                 thread_id: $this->thread_id,
@@ -187,8 +185,8 @@ class ChatGPT {
             );
 
             $message = new stdClass;
-            $message->role = $messages[0]["role"];
-            $message->content = $messages[0]["content"][0]["text"]["value"];
+            $message->role = $messages[0]->role;
+            $message->content = $messages[0]->content[0]->text->value;
         }
 
         $message = $this->handle_functions( $message, $raw_function_response );
@@ -283,7 +281,7 @@ class ChatGPT {
         $this->messages[] = $message;
 
         if( is_callable( $this->savefunction ) ) {
-            ($this->savefunction)( (object) $message, $this->chat_id );
+            ($this->savefunction)( $message, $this->chat_id );
         }
 
         $message = end( $this->messages );
@@ -366,7 +364,7 @@ class ChatGPT {
             if( $raw_function_response ) {
                 // for backwards compatibility
                 if( count( $function_calls ) === 1 ) {
-                    $message->function_call = $function_calls[0]["function"];
+                    $message->function_call = $function_calls[0]->function;
                 }
 
                 return $message;
@@ -376,14 +374,14 @@ class ChatGPT {
 
             foreach( $function_calls as $tool_call ) {
                 // get function name and arguments
-                $function_call = $tool_call["function"];
-                $function_name = $function_call["name"];
-                $arguments = json_decode( $function_call["arguments"], true );
+                $function_call = $tool_call->function;
+                $function_name = $function_call->name;
+                $arguments = json_decode( $function_call->arguments, true );
 
                 // sometimes ChatGPT responds with only a string of the
                 // first argument instead of a JSON object
                 if( $arguments === null ) {
-                    $arguments = [$function_call["arguments"]];
+                    $arguments = [$function_call->arguments];
                 }
 
                 $callable = $this->get_function( $function_name );
@@ -394,9 +392,9 @@ class ChatGPT {
                     $result = "Function '$function_name' unavailable.";
                 }
 
-                $tool_outputs[$tool_call["id"]] = $result;
+                $tool_outputs[$tool_call->id] = $result;
 
-                $this->fresult( $tool_call["id"], $result );
+                $this->fresult( $tool_call->id, $result );
             }
 
             if( $this->assistant_mode ) {
@@ -602,7 +600,7 @@ class ChatGPT {
         string|array $postfields = "",
         array $extra_headers = [],
         bool $post = true,
-    ) {
+    ): stdClass {
         $ch = curl_init( $url );
 
         $headers = [
@@ -624,11 +622,11 @@ class ChatGPT {
 
         curl_close( $ch );
 
-        $data = json_decode( $response, true );
+        $data = json_decode( $response );
 
-        if( ! isset( $data["id"] ) && ! isset( $data["data"] ) ) {
-            if( isset( $data["error"] ) ) {
-                throw new \Exception( "Error in OpenAI request: " . $data["error"]["message"] );
+        if( ! isset( $data->id ) && ! isset( $data->data ) ) {
+            if( isset( $data->error ) ) {
+                throw new \Exception( "Error in OpenAI request: " . $data->error->message );
             }
 
             throw new \Exception( "Error in OpenAI request: " . $data );
@@ -661,10 +659,10 @@ class ChatGPT {
         );
 
         return new Assistant(
-            name: $response["name"],
-            model: $response["model"],
-            tools: $response["tools"],
-            id: $response["id"],
+            name: $response->name,
+            model: $response->model,
+            tools: $response->tools,
+            id: $response->id,
         );
     }
 
@@ -675,7 +673,7 @@ class ChatGPT {
         );
 
         return new Thread(
-            id: $response["id"],
+            id: $response->id,
         );
     }
 
@@ -693,9 +691,9 @@ class ChatGPT {
 
         return new Run(
             thread_id: $thread_id,
-            required_action: $response["required_action"] ?? null,
-            status: $response["status"],
-            id: $response["id"],
+            required_action: $response->required_action ?? null,
+            status: $response->status,
+            id: $response->id,
         );
     }
 
@@ -711,9 +709,9 @@ class ChatGPT {
 
         return new Run(
             thread_id: $thread_id,
-            required_action: $response["required_action"] ?? null,
-            status: $response["status"],
-            id: $response["id"],
+            required_action: $response->required_action ?? null,
+            status: $response->status,
+            id: $response->id,
         );
     }
 
@@ -725,10 +723,10 @@ class ChatGPT {
         );
 
         return new Assistant(
-            model: $response["model"],
-            id: $response["id"],
-            tools: $response["tools"],
-            name: $response["name"],
+            model: $response->model,
+            id: $response->id,
+            tools: $response->tools,
+            name: $response->name,
         );
     }
 
@@ -743,18 +741,18 @@ class ChatGPT {
             post: false,
         );
 
-        return $response["data"];
+        return $response->data;
     }
 
     public function add_assistants_message(
-        array $message,
+        stdClass $message,
     ): void {
         $this->openai_api_post(
             url: "https://api.openai.com/v1/threads/" . $this->thread_id . "/messages",
             extra_headers: ["OpenAI-Beta: assistants=v1"],
             postfields: json_encode( [
-                "role" => $message["role"],
-                "content" => $message["content"],
+                "role" => $message->role,
+                "content" => $message->content,
             ] )
         );
     }
