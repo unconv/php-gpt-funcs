@@ -570,7 +570,7 @@ class ChatGPT {
         foreach( $lines as $line ) {
             $matches = [];
             if( preg_match( '/\s+?\*\s+?([^@](.*?))?$/', $line, $matches ) === 1 ) {
-                $description .= " ".$matches[1];
+                $description .= ($matches[1] ?? "") . "\n";
                 $started = true;
             } elseif( $started ) {
                 break;
