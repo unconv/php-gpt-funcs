@@ -36,6 +36,7 @@ function add_to_cart( $product, $quantity ) {
 
     $cart[$product] += $quantity;
 
+    echo "DEBUG: Added product '$product' to cart.\n";
     return "Added product '$product' to cart.";
 }
 
@@ -48,6 +49,7 @@ function get_cart_contents( $param ) {
     global $cart;
 
     if( count( $cart ) == 0 ) {
+        echo "DEBUG: Cart is empty\n";
         return "The cart is empty.";
     }
 
@@ -60,6 +62,7 @@ function get_cart_contents( $param ) {
         ];
     }
 
+    echo "DEBUG: Cart contents: " . json_encode( $contents ) . "\n";
     return "Cart contents: " . json_encode( $contents );
 }
 
