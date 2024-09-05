@@ -573,7 +573,7 @@ class ChatGPT {
         ];
 
         $matches = [];
-        preg_match_all( '/@param\s+(\S+)\s+\$(\S+)[^\S\r\n]?([^\r\n]+)?/', $doc_comment, $matches );
+        preg_match_all('/@param *(\w+) *\$(\w+) ?(.*?)$/gsm', $doc_comment, $matches);
 
         $types = $matches[1];
         $names = $matches[2];
