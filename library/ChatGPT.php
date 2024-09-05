@@ -114,10 +114,25 @@ class ChatGPT {
         }
     }
 
-    public function amessage( string $assistant_message ) {
+    /**
+     * Add an assistant message to the context
+     *
+     * @param ?string $assistant_message The text content of the message or null for tool calls
+     * @param array<stdClass> $tool_calls An array of tool calls in the OpenAI API format
+     *
+     * @return void
+     */
+    public function amessage(
+        ?string $assistant_message = null,
+        ?array $tool_calls = null
+    ): void {
         $message = new stdClass;
         $message->role = "assistant";
         $message->content = $assistant_message;
+
+        if( $tool_calls ) {
+            $message->tool_calls = $tool_calls;
+        }
 
         $this->messages[] = $message;
 
