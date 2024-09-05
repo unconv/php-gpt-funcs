@@ -333,7 +333,8 @@ class ChatGPT {
             $partial_data .= $delta;
 
             try {
-                $json = json_decode( substr( $delta, 6 ), flags: JSON_THROW_ON_ERROR );
+                $json = json_decode( substr( $partial_data, 6 ), flags: JSON_THROW_ON_ERROR );
+                $partial_data = "";
             } catch( JsonException $e ) {
                 continue;
             }
@@ -341,7 +342,7 @@ class ChatGPT {
             $content = "";
 
             if( ! isset( $json->choices[0]->delta ) ) {
-                error_log( "Invalid ChatGPT response: '" . $delta . "'" );
+                error_log( "Invalid ChatGPT response: '" . $partial_data . "'" );
                 continue;
             }
 
